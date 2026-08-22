@@ -1,0 +1,692 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#13233B" />
+  <meta name="description" content="Scanmark: Kamerabasierte OCR, Formularerkennung und dialoggestützte Vervollständigung – lokal im Browser." />
+  <title>Scanmark · Dokumentenassistent</title>
+  <link rel="icon" href="/manus-storage/scanmark-logo_e88b0ffd.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=DM+Serif+Display:ital@0;1&display=swap" rel="stylesheet" />
+  <style>
+    /*
+      Scanmark · Design philosophy: Verwaltungsatelier.
+      Editorial Swiss-functional workbench: ink-blue precision, warm paper surfaces,
+      and amber only as a meaningful recognition / action signal.
+    */
+    :root {
+      --ink: #13233B;
+      --ink-2: #263B58;
+      --paper: #F8F5EF;
+      --paper-2: #EEE9DF;
+      --paper-3: #E4DED2;
+      --amber: #F3A53B;
+      --amber-deep: #C9780D;
+      --moss: #2E6E59;
+      --red: #B64C40;
+      --line: rgba(19, 35, 59, .14);
+      --soft-line: rgba(19, 35, 59, .08);
+      --shadow: 0 18px 48px rgba(19, 35, 59, .09);
+      --ease-out: cubic-bezier(.23, 1, .32, 1);
+      --ease-in-out: cubic-bezier(.77, 0, .175, 1);
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      min-width: 320px; margin: 0; color: var(--ink); background: var(--paper);
+      font-family: "DM Sans", system-ui, sans-serif; font-size: 16px; line-height: 1.45;
+    }
+    button, input, textarea { font: inherit; }
+    button { color: inherit; }
+    button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px solid rgba(243,165,59,.55); outline-offset: 3px; }
+    .grain {
+      min-height: 100vh;
+      background-image: linear-gradient(rgba(248,245,239,.93), rgba(248,245,239,.93)), url('/manus-storage/document-texture_22d005ce.png');
+      background-size: auto, cover;
+      background-attachment: fixed;
+    }
+    .topbar {
+      display: flex; align-items: center; justify-content: space-between; gap: 24px;
+      min-height: 76px; padding: 13px clamp(20px, 4vw, 64px); border-bottom: 1px solid var(--line);
+      background: rgba(248,245,239,.88); backdrop-filter: blur(14px); position: sticky; top: 0; z-index: 30;
+    }
+    .brand { display: inline-flex; align-items: center; gap: 12px; text-decoration: none; color: var(--ink); }
+    .brand img { width: 38px; height: 38px; object-fit: contain; }
+    .brand-name { font-size: 19px; font-weight: 700; letter-spacing: -.05em; }
+    .brand-meta, .eyebrow, .field-origin, .doc-kicker, .nav-status, .privacy-kicker {
+      font-size: 10px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;
+    }
+    .brand-meta { display: block; margin-top: -1px; color: #6D7889; letter-spacing: .11em; }
+    .top-right { display: flex; align-items: center; gap: 11px; }
+    .nav-status { display: inline-flex; align-items: center; gap: 7px; color: var(--moss); letter-spacing: .1em; }
+    .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--moss); box-shadow: 0 0 0 4px rgba(46,110,89,.1); }
+    .icon-button, .button {
+      min-height: 42px; border: 1px solid var(--line); cursor: pointer; transition: transform 160ms var(--ease-out), background 160ms var(--ease-out), border-color 160ms var(--ease-out), color 160ms var(--ease-out);
+    }
+    .icon-button { width: 42px; display: inline-grid; place-items: center; background: transparent; border-radius: 0; }
+    .icon-button svg { width: 19px; height: 19px; }
+    .icon-button:hover { background: rgba(19,35,59,.055); }
+    .button { display: inline-flex; align-items: center; justify-content: center; gap: 9px; padding: 0 15px; font-weight: 700; letter-spacing: -.015em; background: #fffdf9; }
+    .button svg { width: 17px; height: 17px; }
+    .button:hover { transform: translateY(-2px); border-color: rgba(19,35,59,.35); }
+    .button:active, .icon-button:active { transform: scale(.97); }
+    .button.primary { background: var(--ink); border-color: var(--ink); color: #fff; box-shadow: 0 8px 16px rgba(19,35,59,.14); }
+    .button.primary:hover { background: var(--ink-2); }
+    .button.amber { background: var(--amber); border-color: var(--amber); color: var(--ink); }
+    .button.ghost { background: transparent; }
+    .button.small { min-height: 36px; font-size: 13px; padding: 0 12px; }
+    .button:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+    .intro {
+      display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(280px, .75fr); gap: 28px; align-items: end;
+      padding: clamp(44px, 7vw, 88px) clamp(20px, 5vw, 84px) 42px; border-bottom: 1px solid var(--line);
+    }
+    .eyebrow { color: var(--amber-deep); margin: 0 0 16px; }
+    h1 { max-width: 800px; margin: 0; font-family: "DM Serif Display", Georgia, serif; font-weight: 400; font-size: clamp(44px, 6.2vw, 88px); line-height: .92; letter-spacing: -.055em; }
+    h1 em { color: var(--amber-deep); font-style: italic; }
+    .intro-copy { max-width: 390px; margin: 0 0 2px; color: #516075; font-size: 17px; line-height: 1.55; }
+    .process-strip { display: flex; flex-wrap: wrap; gap: 0; padding: 0 clamp(20px, 5vw, 84px); border-bottom: 1px solid var(--line); }
+    .process-item { display: flex; align-items: center; gap: 10px; min-height: 54px; padding: 0 24px 0 0; margin-right: 24px; font-size: 12px; font-weight: 600; color: #6C7788; }
+    .process-number { color: var(--amber-deep); font-family: "DM Serif Display", Georgia, serif; font-size: 19px; }
+    .workbench { padding: clamp(26px, 4vw, 56px) clamp(20px, 5vw, 84px) 72px; }
+    .workbench-grid { display: grid; grid-template-columns: minmax(280px,.9fr) minmax(340px,1.25fr) minmax(260px,.78fr); align-items: start; }
+    .station { min-width: 0; position: relative; background: rgba(255,253,249,.58); border: 1px solid var(--line); }
+    .station + .station { border-left: 0; }
+    .station-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; padding: 18px 19px 17px; border-bottom: 1px solid var(--soft-line); }
+    .station-index { display: inline-grid; place-items: center; width: 28px; height: 28px; color: #fff; background: var(--ink); font-family: "DM Serif Display", Georgia, serif; font-size: 15px; }
+    .station-title { margin: 0; font-size: 15px; line-height: 1.1; letter-spacing: -.025em; }
+    .station-subtitle { display: block; margin-top: 4px; color: #738093; font-size: 11px; }
+    .scan-zone { position: relative; min-height: 365px; padding: 18px; background: #dfd9ce; overflow: hidden; }
+    .scan-zone::before { content: ""; position: absolute; inset: 0; background: linear-gradient(135deg, rgba(19,35,59,.16), transparent 65%); pointer-events: none; }
+    .scan-bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: .38; filter: saturate(.65) contrast(.94); }
+    .camera-feed, #snapshot { position: absolute; inset: 0; display: none; width: 100%; height: 100%; object-fit: cover; background: var(--ink); }
+    #snapshot { object-fit: contain; background: #dbd5ca; }
+    .scan-frame { position: absolute; z-index: 2; inset: 38px 32px; border: 1.5px solid rgba(255,255,255,.9); box-shadow: inset 0 0 0 1px rgba(19,35,59,.14); pointer-events: none; }
+    .scan-frame::before, .scan-frame::after, .scan-corner::before, .scan-corner::after { content: ""; position: absolute; width: 22px; height: 22px; border-color: var(--amber); }
+    .scan-frame::before { top: -3px; left: -3px; border-top: 3px solid; border-left: 3px solid; }
+    .scan-frame::after { top: -3px; right: -3px; border-top: 3px solid; border-right: 3px solid; }
+    .scan-corner::before { bottom: -3px; left: -3px; border-bottom: 3px solid; border-left: 3px solid; }
+    .scan-corner::after { bottom: -3px; right: -3px; border-bottom: 3px solid; border-right: 3px solid; }
+    .scanning-line { display: none; position: absolute; z-index: 3; left: 34px; right: 34px; height: 3px; background: var(--amber); box-shadow: 0 0 16px rgba(243,165,59,.85); animation: scan 2.1s var(--ease-in-out) infinite; }
+    .scan-zone.is-recognizing .scanning-line { display: block; }
+    @keyframes scan { from { top: 44px; } 50% { top: calc(100% - 47px); } to { top: 44px; } }
+    .scan-label { position: absolute; z-index: 4; left: 30px; right: 30px; bottom: 27px; padding: 13px 14px; color: #fff; background: rgba(19,35,59,.76); backdrop-filter: blur(10px); font-size: 13px; }
+    .scan-label strong { display: block; margin-bottom: 2px; font-size: 14px; }
+    .scan-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 16px; border-top: 1px solid var(--soft-line); }
+    .scan-actions .button:first-child { grid-column: 1 / -1; }
+    .scan-note { margin: 0; padding: 0 18px 17px; color: #778294; font-size: 11px; line-height: 1.5; }
+    .hidden-input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+    .document-body { min-height: 459px; }
+    .document-empty, .document-active { min-height: 459px; }
+    .document-empty { display: grid; place-items: center; padding: 30px; text-align: center; color: #657286; }
+    .empty-icon { position: relative; display: grid; place-items: center; width: 66px; height: 78px; margin: 0 auto 17px; border: 1.5px solid currentColor; }
+    .empty-icon::before, .empty-icon::after { content: ""; position: absolute; right: -1.5px; width: 23px; height: 23px; background: var(--paper); border-left: 1.5px solid currentColor; }
+    .empty-icon::before { top: -1px; clip-path: polygon(0 0,100% 100%,0 100%); border-bottom: 1.5px solid currentColor; }
+    .empty-icon::after { bottom: 10px; left: 15px; width: 34px; height: 1px; background: currentColor; border: 0; box-shadow: 0 11px 0 currentColor, 0 22px 0 currentColor; clip-path: none; }
+    .document-empty p { max-width: 255px; margin: 0; font-size: 13px; }
+    .document-active { display: none; }
+    .doc-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 9px 14px; padding: 17px 20px; border-bottom: 1px solid var(--soft-line); }
+    .doc-kind { color: var(--ink); font-size: 13px; font-weight: 700; }
+    .doc-meta span { color: #778294; font-size: 11px; }
+    .chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; color: var(--moss); background: rgba(46,110,89,.08); font-size: 10px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; }
+    .chip.amber-chip { color: var(--amber-deep); background: rgba(243,165,59,.16); }
+    .ocr-text { display: block; width: 100%; min-height: 333px; resize: vertical; padding: 22px 21px; border: 0; background: transparent; color: #2D3A4C; font-family: "DM Sans", system-ui, sans-serif; font-size: 14px; line-height: 1.7; }
+    .ocr-text::placeholder { color: #9DA6B2; }
+    .document-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px 16px; border-top: 1px solid var(--soft-line); color: #728094; font-size: 11px; }
+    .document-foot button { color: var(--ink); background: transparent; border: 0; cursor: pointer; font-size: 11px; font-weight: 700; }
+    .assistant-body { padding: 16px; }
+    .assistant-greeting { padding: 15px 16px 16px; background: var(--ink); color: #fff; }
+    .assistant-greeting .eyebrow { margin-bottom: 8px; color: #f4bd70; }
+    .assistant-greeting h2 { margin: 0; font-family: "DM Serif Display", Georgia, serif; font-size: 23px; font-weight: 400; line-height: 1.03; letter-spacing: -.03em; }
+    .assistant-greeting p { margin: 8px 0 0; color: rgba(255,255,255,.72); font-size: 12px; line-height: 1.5; }
+    .question-card { margin-top: 15px; padding: 15px; background: rgba(243,165,59,.13); border-left: 3px solid var(--amber); }
+    .question-card.is-waiting { background: rgba(19,35,59,.045); border-left-color: #9CA7B6; }
+    .question-kicker { display: block; margin-bottom: 8px; color: var(--amber-deep); font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+    .question-card p { margin: 0; font-family: "DM Serif Display", Georgia, serif; font-size: 19px; line-height: 1.12; letter-spacing: -.02em; }
+    .answer-row { display: flex; gap: 8px; margin-top: 12px; }
+    .answer-row input { min-width: 0; width: 100%; padding: 10px 11px; border: 1px solid rgba(19,35,59,.22); border-radius: 0; color: var(--ink); background: #fffdf9; font-size: 13px; }
+    .answer-row .button { flex: 0 0 auto; min-height: 39px; }
+    .field-list { margin-top: 17px; border-top: 1px solid var(--soft-line); }
+    .field-row { position: relative; padding: 13px 0; border-bottom: 1px solid var(--soft-line); }
+    .field-row::before { content: ""; position: absolute; left: -16px; top: 0; bottom: 0; width: 2px; background: transparent; transition: background 180ms var(--ease-out); }
+    .field-row.changed::before { background: var(--amber); }
+    .field-label-line { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+    .field-label { font-size: 12px; font-weight: 700; }
+    .field-confidence { flex: 0 0 auto; color: var(--moss); font-size: 10px; font-weight: 700; }
+    .field-confidence.missing { color: var(--red); }
+    .field-input { width: 100%; margin-top: 5px; padding: 0; border: 0; outline: 0; color: #536075; background: transparent; font-size: 13px; }
+    .field-input::placeholder { color: #A0A9B4; font-style: italic; }
+    .field-origin { display: block; margin-top: 4px; color: #95A0AE; font-size: 9px; letter-spacing: .1em; }
+    .assistant-actions { display: grid; grid-template-columns: 1fr; gap: 9px; margin-top: 17px; }
+    .assistant-actions .button { width: 100%; }
+    .privacy-card { display: grid; grid-template-columns: 62px 1fr; gap: 13px; align-items: center; margin-top: 25px; padding: 13px 0 0; border-top: 1px solid var(--soft-line); }
+    .privacy-card img { width: 58px; height: 44px; object-fit: cover; mix-blend-mode: multiply; }
+    .privacy-kicker { color: var(--amber-deep); }
+    .privacy-card p { margin: 3px 0 0; color: #718094; font-size: 10px; line-height: 1.5; }
+    .toast { position: fixed; z-index: 50; right: 20px; bottom: 20px; max-width: min(400px, calc(100vw - 40px)); padding: 13px 15px; color: #fff; background: var(--ink); box-shadow: var(--shadow); transform: translateY(16px); opacity: 0; pointer-events: none; transition: transform 200ms var(--ease-out), opacity 200ms var(--ease-out); font-size: 13px; }
+    .toast.show { transform: translateY(0); opacity: 1; }
+    .help-dialog { width: min(600px, calc(100vw - 32px)); padding: 0; border: 0; color: var(--ink); background: var(--paper); box-shadow: 0 24px 80px rgba(19,35,59,.28); }
+    .help-dialog::backdrop { background: rgba(19,35,59,.46); backdrop-filter: blur(2px); }
+    .dialog-body { padding: 30px; }
+    .dialog-body h2 { margin: 0 0 10px; font-family: "DM Serif Display", Georgia, serif; font-size: 32px; font-weight: 400; letter-spacing: -.035em; }
+    .dialog-body p { color: #566378; font-size: 14px; }
+    .dialog-body ol { padding-left: 19px; color: #445168; font-size: 14px; line-height: 1.7; }
+    .dialog-foot { display: flex; justify-content: flex-end; padding: 14px 30px; border-top: 1px solid var(--line); }
+    @media (max-width: 1080px) { .workbench-grid { grid-template-columns: minmax(280px,.9fr) minmax(340px,1.2fr); } .assistant { grid-column: 1 / -1; border-left: 1px solid var(--line) !important; border-top: 0; } .assistant .assistant-body { display: grid; grid-template-columns: .7fr 1.3fr; gap: 18px; } .assistant .field-list, .assistant .assistant-actions, .assistant .privacy-card { margin-top: 0; } .assistant .privacy-card { display: none; } }
+    @media (max-width: 740px) { .topbar { min-height: 66px; padding: 10px 18px; } .brand img { width: 34px; height: 34px; } .brand-name { font-size: 17px; } .brand-meta, .nav-status { display: none; } .intro { grid-template-columns: 1fr; gap: 18px; padding: 40px 20px 31px; } .intro-copy { font-size: 15px; } .process-strip { padding: 0 20px; overflow-x: auto; flex-wrap: nowrap; } .process-item { flex: 0 0 auto; } .workbench { padding: 21px 16px 48px; } .workbench-grid { grid-template-columns: 1fr; } .station + .station { border-left: 1px solid var(--line); border-top: 0; } .assistant .assistant-body { display: block; } .assistant .field-list, .assistant .assistant-actions { margin-top: 17px; } .assistant .privacy-card { display: grid; } .scan-zone { min-height: 300px; } .document-body, .document-empty, .document-active { min-height: 340px; } .ocr-text { min-height: 225px; } }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .001ms !important; transition-duration: .001ms !important; } }
+  </style>
+</head>
+<body>
+  <div class="grain">
+    <header class="topbar">
+      <a href="#oben" class="brand" aria-label="Scanmark Startseite">
+        <img src="/manus-storage/scanmark-logo_e88b0ffd.png" alt="" />
+        <span><span class="brand-name">scanmark</span><span class="brand-meta">Dokumentenassistent</span></span>
+      </a>
+      <div class="top-right">
+        <span class="nav-status"><span class="status-dot"></span>Lokal im Browser</span>
+        <button class="icon-button" id="helpButton" type="button" aria-label="Hilfe öffnen" title="So funktioniert Scanmark">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M9.65 9a2.45 2.45 0 1 1 4.43 1.46c-.84 1.12-2.08 1.35-2.08 2.54v.4"/><path d="M12 16.75h.01"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <main id="oben">
+      <section class="intro" aria-labelledby="main-title">
+        <div>
+          <p class="eyebrow">Kamera · Texterkennung · Formularhilfe</p>
+          <h1 id="main-title">Dokument erfassen.<br><em>Angaben klären.</em><br>Fertig eintragen.</h1>
+        </div>
+        <p class="intro-copy">Scannen Sie ein Dokument mit Ihrer Kamera oder wählen Sie eine Datei. Scanmark liest den Text aus, übernimmt eindeutige Angaben und fragt nur dort nach, wo etwas fehlt.</p>
+      </section>
+
+      <section class="process-strip" aria-label="Arbeitsablauf">
+        <div class="process-item"><span class="process-number">01</span>Dokument aufnehmen</div>
+        <div class="process-item"><span class="process-number">02</span>Text lokal lesen</div>
+        <div class="process-item"><span class="process-number">03</span>Felder prüfen & ergänzen</div>
+      </section>
+
+      <section class="workbench" aria-label="Dokumentenwerkbank">
+        <div class="workbench-grid">
+          <section class="station capture" aria-labelledby="capture-title">
+            <div class="station-head">
+              <div><h2 class="station-title" id="capture-title">Erfassen <span class="station-subtitle">Kamera oder Bilddatei</span></h2></div>
+              <span class="station-index" aria-hidden="true">1</span>
+            </div>
+            <div class="scan-zone" id="scanZone">
+              <img class="scan-bg" src="/manus-storage/document-scanner-hero_1a884877.png" alt="" />
+              <video class="camera-feed" id="cameraFeed" autoplay playsinline muted></video>
+              <img id="snapshot" alt="Aufgenommenes Dokument" />
+              <div class="scan-frame"><span class="scan-corner"></span></div>
+              <div class="scanning-line" aria-hidden="true"></div>
+              <div class="scan-label" id="scanLabel"><strong>Bereit für Ihr Dokument</strong><span>Kamera starten oder eine Bilddatei auswählen.</span></div>
+            </div>
+            <div class="scan-actions">
+              <button type="button" class="button primary" id="cameraButton">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3.5 7.5h3l1.3-2h8.4l1.3 2h3A1.5 1.5 0 0 1 22 9v9.5a1.5 1.5 0 0 1-1.5 1.5h-17A1.5 1.5 0 0 1 2 18.5V9a1.5 1.5 0 0 1 1.5-1.5Z"/><circle cx="12" cy="13.5" r="3.5"/></svg>
+                <span id="cameraButtonText">Kamera starten</span>
+              </button>
+              <button type="button" class="button ghost" id="captureButton" disabled>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="7.5"/><circle cx="12" cy="12" r="3.5"/></svg>Aufnehmen
+              </button>
+              <button type="button" class="button ghost" id="uploadButton">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 15V3m0 0L7.75 7.25M12 3l4.25 4.25M4 14.75v4.5A1.75 1.75 0 0 0 5.75 21h12.5A1.75 1.75 0 0 0 20 19.25v-4.5"/></svg>Datei wählen
+              </button>
+              <input class="hidden-input" id="fileInput" type="file" accept="image/*,.pdf" />
+            </div>
+            <p class="scan-note">Für eine bessere Erkennung: Dokument gerade ausrichten, Reflexionen vermeiden und den Text möglichst formatfüllend aufnehmen.</p>
+          </section>
+
+          <section class="station transcription" aria-labelledby="transcription-title">
+            <div class="station-head">
+              <div><h2 class="station-title" id="transcription-title">Abschrift <span class="station-subtitle">Erkannter Text – jederzeit bearbeitbar</span></h2></div>
+              <span class="station-index" aria-hidden="true">2</span>
+            </div>
+            <div class="document-body">
+              <div class="document-empty" id="documentEmpty">
+                <div>
+                  <div class="empty-icon" aria-hidden="true"></div>
+                  <p>Nach der Aufnahme erscheint hier die maschinenlesbare Abschrift Ihres Dokuments.</p>
+                </div>
+              </div>
+              <div class="document-active" id="documentActive">
+                <div class="doc-meta"><span class="doc-kind" id="docKind">Dokument</span><span id="wordCount">0 Wörter</span><span class="chip" id="ocrStatus">Erkannt</span></div>
+                <textarea class="ocr-text" id="ocrText" placeholder="Die erkannte Abschrift erscheint hier …" aria-label="Erkannter Dokumenttext"></textarea>
+                <div class="document-foot"><span id="sourceName">Quelle: Kamera</span><button type="button" id="reprocessButton">Felder erneut ableiten</button></div>
+              </div>
+            </div>
+          </section>
+
+          <aside class="station assistant" aria-labelledby="assistant-title">
+            <div class="station-head">
+              <div><h2 class="station-title" id="assistant-title">Eintragen <span class="station-subtitle">Erkannte Angaben & Rückfragen</span></h2></div>
+              <span class="station-index" aria-hidden="true">3</span>
+            </div>
+            <div class="assistant-body">
+              <div>
+                <div class="assistant-greeting">
+                  <p class="eyebrow">Ihr Assistent</p>
+                  <h2 id="assistantTitle">Ich halte die Angaben für Sie bereit.</h2>
+                  <p id="assistantCopy">Sobald ein Dokument gelesen wurde, übernehme ich eindeutige Informationen in die Felder.</p>
+                </div>
+                <div class="question-card is-waiting" id="questionCard">
+                  <span class="question-kicker" id="questionKicker">Bereit</span>
+                  <p id="questionText">Scannen Sie ein Dokument, damit ich die passenden Felder erkennen kann.</p>
+                  <div class="answer-row" id="answerRow" hidden>
+                    <input id="answerInput" type="text" autocomplete="off" />
+                    <button class="button amber small" type="button" id="answerButton">Übernehmen</button>
+                  </div>
+                </div>
+              </div>
+              <div>
+                <div class="field-list" id="fieldList" aria-live="polite">
+                  <div class="field-row"><div class="field-label-line"><span class="field-label">Noch keine Angaben</span><span class="field-confidence missing">wartet</span></div><span class="field-origin">Dokument scannen, um Felder abzuleiten</span></div>
+                </div>
+                <div class="assistant-actions">
+                  <button type="button" class="button primary" id="copyButton" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="8" y="8" width="11" height="11" rx="1"/><path d="M16 8V5.75A1.75 1.75 0 0 0 14.25 4h-9.5A1.75 1.75 0 0 0 3 5.75v9.5C3 16.22 3.78 17 4.75 17H8"/></svg>Angaben kopieren</button>
+                  <button type="button" class="button ghost" id="exportButton" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3v12m0 0 4.25-4.25M12 15l-4.25-4.25M4 19.25C4 20.22 4.78 21 5.75 21h12.5A1.75 1.75 0 0 0 20 19.25"/></svg>Als Text speichern</button>
+                </div>
+                <div class="privacy-card">
+                  <img src="/manus-storage/privacy-seal_0caab5ef.png" alt="" />
+                  <div><span class="privacy-kicker">Datenschutz</span><p>Die Kameraaufnahme und die OCR-Verarbeitung bleiben in diesem Browserfenster. Beim Neuladen werden sie entfernt.</p></div>
+                </div>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <dialog class="help-dialog" id="helpDialog" aria-labelledby="helpTitle">
+    <div class="dialog-body">
+      <p class="eyebrow">Kurzanleitung</p>
+      <h2 id="helpTitle">So arbeitet Scanmark</h2>
+      <p>Diese Einzeldatei nutzt die Kamera Ihres Geräts und eine lokal im Browser laufende Texterkennung. Für die erstmalige OCR-Ausführung wird die Erkennungsbibliothek aus dem Internet geladen; Dokumentbilder und Ergebnisse werden nicht auf einen Server hochgeladen.</p>
+      <ol>
+        <li>Starten Sie die Kamera oder wählen Sie ein Foto eines Dokuments aus.</li>
+        <li>Nach der Texterkennung können Sie die Abschrift direkt korrigieren.</li>
+        <li>Scanmark erkennt typische Angaben wie Name, Adresse, E-Mail, Telefon, Datum oder IBAN und fragt für fehlende Pflichtangaben nach.</li>
+      </ol>
+    </div>
+    <div class="dialog-foot"><button type="button" class="button primary" id="closeHelpButton">Verstanden</button></div>
+  </dialog>
+
+  <script>
+    (() => {
+      "use strict";
+
+      const $ = (selector) => document.querySelector(selector);
+      const scanZone = $("#scanZone");
+      const cameraFeed = $("#cameraFeed");
+      const snapshot = $("#snapshot");
+      const cameraButton = $("#cameraButton");
+      const cameraButtonText = $("#cameraButtonText");
+      const captureButton = $("#captureButton");
+      const uploadButton = $("#uploadButton");
+      const fileInput = $("#fileInput");
+      const scanLabel = $("#scanLabel");
+      const documentEmpty = $("#documentEmpty");
+      const documentActive = $("#documentActive");
+      const ocrText = $("#ocrText");
+      const ocrStatus = $("#ocrStatus");
+      const docKind = $("#docKind");
+      const wordCount = $("#wordCount");
+      const sourceName = $("#sourceName");
+      const fieldList = $("#fieldList");
+      const questionCard = $("#questionCard");
+      const questionKicker = $("#questionKicker");
+      const questionText = $("#questionText");
+      const answerRow = $("#answerRow");
+      const answerInput = $("#answerInput");
+      const answerButton = $("#answerButton");
+      const assistantTitle = $("#assistantTitle");
+      const assistantCopy = $("#assistantCopy");
+      const copyButton = $("#copyButton");
+      const exportButton = $("#exportButton");
+      const reprocessButton = $("#reprocessButton");
+      const toast = $("#toast");
+      const helpDialog = $("#helpDialog");
+
+      let stream = null;
+      let currentImage = null;
+      let currentSource = "Kamera";
+      let fields = [];
+      let pendingFieldKey = null;
+      let toastTimer = null;
+
+      const escapeHTML = (value) => String(value || "").replace(/[&<>'\"]/g, (char) => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;","\"":"&quot;"})[char]);
+      const normalize = (text) => (text || "").replace(/\r/g, "").replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+      const sentence = (label) => label === "Name" ? "Wie lautet Ihr vollständiger Name?" : `Welche Angabe soll ich für „${label}“ eintragen?`;
+
+      function notify(message) {
+        toast.textContent = message;
+        toast.classList.add("show");
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => toast.classList.remove("show"), 3600);
+      }
+
+      function stopCamera() {
+        if (stream) stream.getTracks().forEach((track) => track.stop());
+        stream = null;
+        cameraFeed.srcObject = null;
+        cameraFeed.style.display = "none";
+        captureButton.disabled = true;
+        cameraButtonText.textContent = "Kamera starten";
+      }
+
+      async function startCamera() {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          notify("Ihr Browser unterstützt keinen Kamerazugriff. Bitte wählen Sie eine Bilddatei aus.");
+          return;
+        }
+        try {
+          stopCamera();
+          stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+          cameraFeed.srcObject = stream;
+          cameraFeed.style.display = "block";
+          snapshot.style.display = "none";
+          captureButton.disabled = false;
+          cameraButtonText.textContent = "Kamera beenden";
+          scanLabel.innerHTML = "<strong>Dokument ausrichten</strong><span>Halten Sie das Blatt innerhalb des Rahmens und nehmen Sie es auf.</span>";
+        } catch (error) {
+          console.error(error);
+          notify("Die Kamera konnte nicht geöffnet werden. Bitte Berechtigung prüfen oder eine Datei wählen.");
+        }
+      }
+
+      function updateScanLabel(headline, detail) {
+        scanLabel.innerHTML = `<strong>${escapeHTML(headline)}</strong><span>${escapeHTML(detail)}</span>`;
+      }
+
+      function captureFrame() {
+        if (!cameraFeed.videoWidth) { notify("Die Kamera ist noch nicht bereit."); return; }
+        const canvas = document.createElement("canvas");
+        canvas.width = cameraFeed.videoWidth;
+        canvas.height = cameraFeed.videoHeight;
+        const context = canvas.getContext("2d");
+        context.drawImage(cameraFeed, 0, 0, canvas.width, canvas.height);
+        currentImage = canvas.toDataURL("image/jpeg", .92);
+        currentSource = "Kameraaufnahme";
+        snapshot.src = currentImage;
+        snapshot.style.display = "block";
+        stopCamera();
+        recognizeImage(currentImage);
+      }
+
+      function fileToDataURL(file) {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+      }
+
+      async function handleFile(file) {
+        if (!file) return;
+        if (file.type === "application/pdf") {
+          notify("PDF-Dateien benötigen eine gerenderte Bildseite. Bitte verwenden Sie ein Foto oder einen Screenshot der gewünschten Seite.");
+          return;
+        }
+        if (!file.type.startsWith("image/")) { notify("Bitte wählen Sie eine Bilddatei aus."); return; }
+        try {
+          stopCamera();
+          currentImage = await fileToDataURL(file);
+          currentSource = file.name || "Bilddatei";
+          snapshot.src = currentImage;
+          snapshot.style.display = "block";
+          recognizeImage(currentImage);
+        } catch (error) {
+          console.error(error);
+          notify("Die Datei konnte nicht gelesen werden.");
+        }
+      }
+
+      function loadTesseract() {
+        if (window.Tesseract) return Promise.resolve(window.Tesseract);
+        if (window.__tesseractLoading) return window.__tesseractLoading;
+        window.__tesseractLoading = new Promise((resolve, reject) => {
+          const script = document.createElement("script");
+          script.src = "https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js";
+          script.async = true;
+          script.onload = () => resolve(window.Tesseract);
+          script.onerror = () => reject(new Error("OCR-Bibliothek konnte nicht geladen werden"));
+          document.head.appendChild(script);
+        });
+        return window.__tesseractLoading;
+      }
+
+      async function recognizeImage(image) {
+        if (!image) return;
+        scanZone.classList.add("is-recognizing");
+        ocrStatus.textContent = "Liest …";
+        ocrStatus.classList.add("amber-chip");
+        updateScanLabel("Text wird gelesen", "Die OCR-Verarbeitung läuft lokal in diesem Browser.");
+        documentEmpty.style.display = "none";
+        documentActive.style.display = "block";
+        ocrText.value = "";
+        sourceName.textContent = `Quelle: ${currentSource}`;
+        assistantTitle.textContent = "Ich lese das Dokument.";
+        assistantCopy.textContent = "Sobald der Text vorliegt, ordne ich erkennbare Angaben den passenden Feldern zu.";
+        try {
+          const Tesseract = await loadTesseract();
+          const result = await Tesseract.recognize(image, "deu+eng", {
+            logger: (event) => {
+              if (event.status === "recognizing text" && event.progress) {
+                const percent = Math.round(event.progress * 100);
+                updateScanLabel("Text wird gelesen", `${percent} % – bitte einen Moment.`);
+              }
+            }
+          });
+          const text = normalize(result.data.text);
+          if (!text) throw new Error("Kein Text erkannt");
+          ocrText.value = text;
+          updateDocumentMeta(text);
+          deriveFields(text);
+          updateScanLabel("Dokument erfasst", "Prüfen Sie die Abschrift und ergänzen Sie fehlende Angaben rechts.");
+          notify("Text erkannt. Die Formularfelder wurden vorbereitet.");
+        } catch (error) {
+          console.error(error);
+          ocrStatus.textContent = "Prüfung nötig";
+          ocrStatus.classList.remove("amber-chip");
+          ocrStatus.classList.add("amber-chip");
+          updateScanLabel("Keine sichere Abschrift", "Bitte verbessern Sie das Foto und versuchen Sie es erneut.");
+          assistantTitle.textContent = "Ich brauche ein besser lesbares Bild.";
+          assistantCopy.textContent = "Achten Sie auf gleichmäßiges Licht und einen geraden Bildausschnitt. Alternativ können Sie die Abschrift selbst einfügen.";
+          ocrText.placeholder = "Sie können den Text hier auch selbst einfügen und anschließend Felder erneut ableiten.";
+          documentActive.style.display = "block";
+          documentEmpty.style.display = "none";
+        } finally {
+          scanZone.classList.remove("is-recognizing");
+        }
+      }
+
+      function detectDocumentKind(text) {
+        const lower = text.toLowerCase();
+        if (/rechnung|invoice|rechnungsnummer/.test(lower)) return "Rechnung";
+        if (/antrag|antragsteller|beantrag/.test(lower)) return "Antrag";
+        if (/vertrag|vereinbarung/.test(lower)) return "Vertrag";
+        if (/formular|ausfüllen|unterschrift/.test(lower)) return "Formular";
+        if (/bescheid|behörde|amt/.test(lower)) return "Bescheid";
+        return "Dokument";
+      }
+
+      function firstMatch(text, patterns) {
+        for (const pattern of patterns) {
+          const match = text.match(pattern);
+          if (match && match[1]) return match[1].replace(/\s+/g, " ").trim();
+        }
+        return "";
+      }
+
+      function labelValue(text, labels) {
+        const lines = text.split("\n").map((line) => line.trim()).filter(Boolean);
+        for (let i = 0; i < lines.length; i += 1) {
+          for (const label of labels) {
+            const expression = new RegExp(`^${label}\\s*[:\\-]?\\s*(.*)$`, "i");
+            const match = lines[i].match(expression);
+            if (match) {
+              const direct = match[1].trim();
+              if (direct && direct.length > 1) return direct;
+              if (lines[i + 1] && !/^(telefon|e-?mail|iban|datum|ort|adresse|straße|plz|konto|geburt)/i.test(lines[i + 1])) return lines[i + 1];
+            }
+          }
+        }
+        return "";
+      }
+
+      function field(key, label, value, confidence, origin, required = true) {
+        return { key, label, value: (value || "").trim(), confidence, origin, required, changed: false };
+      }
+
+      function deriveFields(text) {
+        const kind = detectDocumentKind(text);
+        const email = firstMatch(text, [/([A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,})/i]);
+        const phone = firstMatch(text, [/(?:Tel(?:efon)?\.?\s*[:\-]?\s*)?(\+?\d[\d\s\-\/()]{6,}\d)/i]);
+        const iban = firstMatch(text, [/\b([A-Z]{2}\d{2}(?:\s?[A-Z0-9]){11,30})\b/i]);
+        const date = firstMatch(text, [/\b(\d{1,2}[.\/-]\d{1,2}[.\/-]\d{2,4})\b/, /\b(\d{1,2}\s+(?:Januar|Februar|März|April|Mai|Juni|Juli|August|September|Oktober|November|Dezember)\s+\d{4})\b/i]);
+        const postal = firstMatch(text, [/\b(\d{5}\s+[A-ZÄÖÜ][A-Za-zÄÖÜäöüß\- ]{2,})\b/]);
+        const street = firstMatch(text, [/\b([A-ZÄÖÜ][A-Za-zÄÖÜäöüß\- ]{2,}\s+\d{1,4}[A-Za-z]?)\b/]);
+        const name = labelValue(text, ["Name", "Vollständiger Name", "Antragsteller(?:in)?", "Kunde(?:nname)?"]) || firstMatch(text, [/\b(?:Herr|Frau)\s+([A-ZÄÖÜ][A-Za-zÄÖÜäöüß\-]+\s+[A-ZÄÖÜ][A-Za-zÄÖÜäöüß\-]+)\b/]);
+        const city = postal ? postal.replace(/^\d{5}\s+/, "") : "";
+        const postcode = postal ? postal.match(/^\d{5}/)?.[0] || "" : "";
+        const base = [
+          field("name", "Name", name, name ? 91 : 0, name ? "Aus der Abschrift" : "Fehlt"),
+          field("address", "Straße & Hausnummer", labelValue(text, ["Adresse", "Straße", "Anschrift"]) || street, street ? 83 : 0, street ? "Aus der Abschrift" : "Fehlt"),
+          field("postcode", "PLZ", labelValue(text, ["PLZ"]) || postcode, postcode ? 96 : 0, postcode ? "Aus der Abschrift" : "Fehlt"),
+          field("city", "Ort", labelValue(text, ["Ort", "Wohnort"]) || city, city ? 91 : 0, city ? "Aus der Abschrift" : "Fehlt"),
+          field("email", "E-Mail", labelValue(text, ["E-?Mail", "E-Mail-Adresse"]) || email, email ? 98 : 0, email ? "Aus der Abschrift" : "Fehlt", false),
+          field("phone", "Telefon", labelValue(text, ["Telefon", "Tel\\."]) || phone, phone ? 88 : 0, phone ? "Aus der Abschrift" : "Fehlt", false),
+          field("date", "Datum", labelValue(text, ["Datum", "Ausstellungsdatum"]) || date, date ? 91 : 0, date ? "Aus der Abschrift" : "Fehlt", false)
+        ];
+        if (kind === "Rechnung") {
+          base.push(field("invoiceNumber", "Rechnungsnummer", labelValue(text, ["Rechnungsnummer", "Rechnung Nr\\.?"]) || firstMatch(text, [/(?:Rechnungsnummer|Rechnung\s*Nr\.?)\s*[:#]?\s*([A-Z0-9\-\/]+)/i]), 90, "Aus der Abschrift", false));
+          base.push(field("iban", "IBAN", iban, iban ? 97 : 0, iban ? "Aus der Abschrift" : "Fehlt", false));
+        }
+        fields = base;
+        docKind.textContent = kind;
+        ocrStatus.textContent = "Erkannt";
+        ocrStatus.classList.remove("amber-chip");
+        assistantTitle.textContent = "Ich habe die Angaben sortiert.";
+        assistantCopy.textContent = "Sichere Treffer wurden übernommen. Für fehlende Werte stelle ich eine gezielte Frage.";
+        renderFields();
+        askNextQuestion();
+        copyButton.disabled = false;
+        exportButton.disabled = false;
+      }
+
+      function renderFields() {
+        fieldList.innerHTML = fields.map((item) => {
+          const confidence = item.value ? `${item.confidence || 90} %` : "fehlt";
+          return `<div class="field-row${item.changed ? " changed" : ""}" data-key="${escapeHTML(item.key)}">
+            <div class="field-label-line"><label class="field-label" for="field-${escapeHTML(item.key)}">${escapeHTML(item.label)}</label><span class="field-confidence${item.value ? "" : " missing"}">${confidence}</span></div>
+            <input class="field-input" id="field-${escapeHTML(item.key)}" data-field-key="${escapeHTML(item.key)}" value="${escapeHTML(item.value)}" placeholder="${item.required ? "Angabe fehlt" : "Optional"}" autocomplete="off" />
+            <span class="field-origin">${escapeHTML(item.origin)}</span>
+          </div>`;
+        }).join("");
+        fieldList.querySelectorAll("[data-field-key]").forEach((input) => input.addEventListener("input", (event) => {
+          const target = event.target;
+          const item = fields.find((entry) => entry.key === target.dataset.fieldKey);
+          if (!item) return;
+          item.value = target.value;
+          item.origin = target.value ? "Manuell geprüft" : "Fehlt";
+          item.confidence = target.value ? 100 : 0;
+          item.changed = true;
+          askNextQuestion(false);
+        }));
+      }
+
+      function askNextQuestion(rerender = true) {
+        const missing = fields.find((item) => item.required && !item.value);
+        if (missing) {
+          pendingFieldKey = missing.key;
+          questionCard.classList.remove("is-waiting");
+          questionKicker.textContent = "Eine Angabe fehlt";
+          questionText.textContent = sentence(missing.label);
+          answerInput.value = "";
+          answerInput.placeholder = missing.label;
+          answerInput.setAttribute("aria-label", missing.label);
+          answerRow.hidden = false;
+          if (rerender) renderFields();
+          return;
+        }
+        pendingFieldKey = null;
+        questionCard.classList.add("is-waiting");
+        questionKicker.textContent = "Vollständig";
+        questionText.textContent = fields.length ? "Die Pflichtangaben sind vorhanden. Sie können alles noch einmal prüfen oder als Text übernehmen." : "Scannen Sie ein Dokument, damit ich die passenden Felder erkennen kann.";
+        answerRow.hidden = true;
+        if (rerender) renderFields();
+      }
+
+      function applyAnswer() {
+        const value = answerInput.value.trim();
+        const item = fields.find((entry) => entry.key === pendingFieldKey);
+        if (!item || !value) { notify("Bitte tragen Sie zuerst eine Angabe ein."); return; }
+        item.value = value;
+        item.confidence = 100;
+        item.origin = "Auf Ihre Rückfrage";
+        item.changed = true;
+        notify(`„${item.label}“ wurde übernommen.`);
+        askNextQuestion(true);
+      }
+
+      function updateDocumentMeta(text) {
+        const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+        wordCount.textContent = `${words} ${words === 1 ? "Wort" : "Wörter"}`;
+        docKind.textContent = detectDocumentKind(text);
+      }
+
+      function structuredText() {
+        const title = docKind.textContent || "Dokument";
+        const rows = fields.filter((item) => item.value).map((item) => `${item.label}: ${item.value}`);
+        return `${title}\n${"=".repeat(title.length)}\n\n${rows.join("\n")}\n\n--- Abschrift ---\n${ocrText.value.trim()}`;
+      }
+
+      async function copyResults() {
+        if (!fields.length) return;
+        const content = structuredText();
+        try {
+          await navigator.clipboard.writeText(content);
+          notify("Angaben und Abschrift wurden in die Zwischenablage kopiert.");
+        } catch {
+          const area = document.createElement("textarea");
+          area.value = content; document.body.append(area); area.select(); document.execCommand("copy"); area.remove();
+          notify("Angaben und Abschrift wurden kopiert.");
+        }
+      }
+
+      function exportResults() {
+        if (!fields.length) return;
+        const blob = new Blob([structuredText()], { type: "text/plain;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement("a");
+        anchor.href = url; anchor.download = "scanmark-dokument.txt"; anchor.click();
+        URL.revokeObjectURL(url);
+        notify("Die Textdatei wird gespeichert.");
+      }
+
+      cameraButton.addEventListener("click", () => stream ? stopCamera() : startCamera());
+      captureButton.addEventListener("click", captureFrame);
+      uploadButton.addEventListener("click", () => fileInput.click());
+      fileInput.addEventListener("change", (event) => handleFile(event.target.files[0]));
+      answerButton.addEventListener("click", applyAnswer);
+      answerInput.addEventListener("keydown", (event) => { if (event.key === "Enter") { event.preventDefault(); applyAnswer(); } });
+      reprocessButton.addEventListener("click", () => {
+        const text = normalize(ocrText.value);
+        if (!text) { notify("Bitte fügen Sie zuerst Text in die Abschrift ein."); return; }
+        updateDocumentMeta(text); deriveFields(text); notify("Felder wurden aus der Abschrift neu abgeleitet.");
+      });
+      ocrText.addEventListener("input", () => updateDocumentMeta(ocrText.value));
+      copyButton.addEventListener("click", copyResults);
+      exportButton.addEventListener("click", exportResults);
+      $("#helpButton").addEventListener("click", () => helpDialog.showModal());
+      $("#closeHelpButton").addEventListener("click", () => helpDialog.close());
+      window.addEventListener("beforeunload", stopCamera);
+    })();
+  </script>
+</body>
+</html>
